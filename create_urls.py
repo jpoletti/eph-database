@@ -86,5 +86,13 @@ def create_unknown_urls(n_quarters, last_known_quarter='24-1T'):
 
     return dict(zip(key_list, url_list))
 
-# def test_unknown_urls():
-#     for i in
+def test_urls(url_dict):
+    valid_url_keys = []
+    for key, url in url_dict:
+        try:
+            response = requests.head(url, timeout=20)
+            if response.status_code == 200:
+                valid_url_keys.append(key)
+        except requests.RequestException:
+            continue
+    return url_dict[valid_url_keys]
