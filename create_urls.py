@@ -92,10 +92,21 @@ def test_urls(url_dict):
 
     for key, url in url_dict.items():
         try:
-            response = requests.get(url, headers=headers, timeout=20)
-            if response.content:
-                valid_urls[key] = url
+            response = requests.get(url, headers=headers, timeout=20,
+                                    allow_redirects=True)
+            
+            # Check if redirected to the error page
+            if "Error-Default" in response.url:
+                continue  # Skip URLs that redirect to the placeholder page
+            
+            # Optionally inspect the content for error indicators
+            if "Error" in response.text or "404" in response.text:
+                continue  # Skip URLs with error messages in their content
+
+            # If no issues, consider the URL valid
+            valid_urls[key] = url
+
         except requests.exceptions.RequestException:
-            continue
+            continue  # Handle connection errors gracefully
 
     return valid_urls
