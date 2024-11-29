@@ -52,7 +52,7 @@ def create_url_list(key_list):
             url_2 = f'eph/EPH_usu_{quarter}_Trim_{year}_txt.zip'
             value_list.append(url_1 + url_2)
 
-    return value_list  
+    return value_list
 
 def create_known_urls(last_known_quarter='24-1T'):
 
@@ -69,7 +69,7 @@ def create_unknown_urls(n_quarters, last_known_quarter='24-1T'):
 
     # Looping to get the first and last quarters
     i = 0
-    while i > n_quarters:
+    while i < n_quarters:
         quarter = quarter + 1
         if quarter == 5:
             quarter = 1
@@ -87,12 +87,15 @@ def create_unknown_urls(n_quarters, last_known_quarter='24-1T'):
     return dict(zip(key_list, url_list))
 
 def test_urls(url_dict):
-    valid_url_keys = []
-    for key, url in url_dict:
+    valid_urls = {}
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+
+    for key, url in url_dict.items():
         try:
-            response = requests.head(url, timeout=20)
-            if response.status_code == 200:
-                valid_url_keys.append(key)
-        except requests.RequestException:
+            response = requests.get(url, headers=headers, timeout=20)
+            if response.content:
+                valid_urls[key] = url
+        except requests.exceptions.RequestException:
             continue
-    return url_dict[valid_url_keys]
+
+    return valid_urls
