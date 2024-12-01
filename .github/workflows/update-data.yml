@@ -3,7 +3,7 @@ name: Update Data
 on:
   workflow_dispatch:  # Allow manual triggering
   schedule:
-    - cron: '0 4 * * 1-5'  # Run at 4am UTC, Monday through Friday
+    - cron: '0 4 * * 1-5'  # Run on the first day of every third month (quarterly)
 
 jobs:
   update-data:
@@ -16,143 +16,12 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.10'  # Adjust to your preferred Python version
+        python-version: '3.12'  
     
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install requests polars
-
-    - name: Check last known quarter before update
-      run: |
-        echo "BEFORE_UPDATE=$(cat last_known_quarter.txt)" >> $GITHUB_ENV
     
     - name: Run data update script
-      id: run-script
-      run: python main.py || echo "script_failed=true" >> $GITHUB_OUTPUT
-    
-    - name: Debug - Extensive file listing and checking
-      run: |
-        echo "Current working directory:"
-        pwd
-        echo "---"
-        echo "Listing all files recursively:"
-        find . -type f
-        echo "---"
-        echo "Checking for specific zip files:"
-        find . -name "hogar_data.zip"
-        find . -name "individual_data.zip"
-        echo "---"
-        echo "Checking file permissions and details:"
-        find . -type f \( -name "hogar_data.zip" -o -name "individual_data.zip" -o -name "last_known_quarter.txt" \) -ls
-    
-    - name: Check last known quarter after update
-      run: |
-        echo "AFTER_UPDATE=$(cat last_known_quarter.txt)" >> $GITHUB_ENV
-    
-    - name: Commit and push changes
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        
-        # Find and stage all relevant files
-        FILES_TO_COMMIT=$(find . -maxdepth 2 \( -name "hogar_data.zip" -o -name "individual_data.zip" -o -name "last_known_quarter.txt" \))
-        
-        if [ -n "$FILES_TO_COMMIT" ]; then
-          echo "Files to commit:"
-          echo "$FILES_TO_COMMIT"
-          
-          # Stage found files
-          echo "$FILES_TO_COMMIT" | xargs git add
-          
-          # Commit if there are changes
-          git diff --staged --quiet || git commit -m "Update data files"
-          git push
-        else
-          echo "No files found to commit"
-        fi
-      continue-on-error: true
-    
-    - name: Slack Notification - Success
-      if: steps.run-script.outputs.script_failed != 'true'
-      uses: slackapi/slack-github-action@v1.24.0
-      with:
-        payload: |
-          {
-            "text": "Data Update Workflow Succeeded ✅",
-            "attachments": [
-              {
-                "color": "good",
-                "fields": [
-                  {
-                    "title": "Repository",
-                    "value": "${{ github.repository }}",
-                    "short": true
-                  },
-                  {
-                    "title": "Workflow Run",
-                    "value": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>",
-                    "short": true
-                  }
-                ]
-              }
-            ]
-          }
-      env:
-        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
-    
-    - name: Slack Notification - Failure
-      if: failure() || steps.run-script.outputs.script_failed == 'true'
-      uses: slackapi/slack-github-action@v1.24.0
-      with:
-        payload: |
-          {
-            "text": "Data Update Workflow Failed ❌",
-            "attachments": [
-              {
-                "color": "danger",
-                "fields": [
-                  {
-                    "title": "Repository",
-                    "value": "${{ github.repository }}",
-                    "short": true
-                  },
-                  {
-                    "title": "Workflow Run",
-                    "value": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>",
-                    "short": true
-                  }
-                ]
-              }
-            ]
-          }
-      env:
-        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
-    
-    - name: Slack Notification - Quarter Changed
-      if: env.BEFORE_UPDATE != env.AFTER_UPDATE
-      uses: slackapi/slack-github-action@v1.24.0
-      with:
-        payload: |
-          {
-            "text": "Last Known Quarter Updated 🔄",
-            "attachments": [
-              {
-                "color": "good",
-                "fields": [
-                  {
-                    "title": "Old Quarter",
-                    "value": "${{ env.BEFORE_UPDATE }}",
-                    "short": true
-                  },
-                  {
-                    "title": "New Quarter",
-                    "value": "${{ env.AFTER_UPDATE }}",
-                    "short": true
-                  }
-                ]
-              }
-            ]
-          }
-      env:
-        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+      run: python update_data_script.py
