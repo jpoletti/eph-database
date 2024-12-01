@@ -24,4 +24,4 @@ jobs:
         pip install requests polars
     
     - name: Run data update script
-      run: python update_data_script.py
+      run: python main.py
