@@ -13,7 +13,8 @@ if __name__ == '__main__':
     valid_urls = test_urls(url_dict)
     
     # Stopping the script if there's no new data
-    if valid_urls is not dict:
+    if not valid_urls:
+        print("There's no new data")
         sys.exit()
     
     # Download the zip file/s with the new data
