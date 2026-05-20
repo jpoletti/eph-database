@@ -4,7 +4,6 @@ import time
 import zipfile
 import shutil
 import re
-import io
 from tqdm import tqdm
 import polars as pl
 from common_functions import *
@@ -77,9 +76,9 @@ def extract_rename_and_move(key):
     extr_dir = 'data/extracted'
     if not os.path.exists(extr_dir):
         os.makedirs(extr_dir)
-    
+
     zip_dir = f'data/zip/{key}.zip'
-    
+
     # Extracting the files without the folders
     with zipfile.ZipFile(zip_dir, 'r') as z:
         for i in z.namelist():
@@ -87,34 +86,34 @@ def extract_rename_and_move(key):
             # Skip directories
             if not filename:
                 continue
-            
+
             source = z.open(i)
             target_path = os.path.join(extr_dir, filename)
             with open(target_path, "wb") as target:
                 shutil.copyfileobj(source, target)
             source.close()
-    
+
     # Regex patterns to try to avoid problems with filenames
     hogar_re = r'[hH][oO][gG][aA][rR]'
     individual_re = r'[iI][nN][dD][iI][vV][iI][dD][uU][aA][lL]'
-    
+
     # Looping over the recently extracted files
     for filename in os.listdir(extr_dir):
         old_path = os.path.join(extr_dir, filename)
-        
+
         # Finding the "hogar" data
         if re.search(hogar_re, filename) and filename.endswith('.txt'):
             new_filename = f'{key}-hogar.txt'
             new_path = os.path.join('data', 'hogar', new_filename)
             os.rename(old_path, new_path)
-        
+
         # Finding the "individual" data
-        elif ((re.search(individual_re, filename) or 'personas' in filename) and 
+        elif ((re.search(individual_re, filename) or 'personas' in filename) and
               filename.endswith('.txt')):
             new_filename = f'{key}-individual.txt'
             new_path = os.path.join('data', 'individual', new_filename)
             os.rename(old_path, new_path)
-    
+
     # Deleting the "extracted" folder with all of its contents
     shutil.rmtree(extr_dir)
 
@@ -150,37 +149,31 @@ def check_file_existence(url_dict):
         print(f'There are {len(url_dict) - equal_counter} missing files')
 
 def read_and_format(path, schema_overrides=None):
-    if schema_overrides is None:
-        df = pl.read_csv(path,
-                         separator=';',
-                         null_values=["NA"],
-                         decimal_comma=True,
-                         infer_schema_length=10000)
-        
-    else:
-        df = pl.read_csv(path,
-                         separator=';',
-                         null_values=["NA"],
-                         decimal_comma=True,
-                         infer_schema_length=10000,
-                         schema_overrides=schema_overrides)
-        
+    df = pl.read_csv(path,
+                     separator=';',
+                     null_values=["NA"],
+                     decimal_comma=True,
+                     infer_schema_length=10000,
+                     ignore_errors=True,
+                     schema_overrides=schema_overrides)
+
     # Cast all i64 columns to i32
     df = df.with_columns([
-        df[col].cast(pl.Int32) for col in df.columns
+        df[col].cast(pl.Int32, strict=False) for col in df.columns
         if df[col].dtype == pl.Int64
-])
+    ])
+
     # Cast all f64 columns to f32
     df = df.with_columns([
-    df[col].cast(pl.Float32) for col in df.columns
-    if df[col].dtype == pl.Float64
-])
-    
+        df[col].cast(pl.Float32, strict=False) for col in df.columns
+        if df[col].dtype == pl.Float64
+    ])
+
     # Remove unnamed columns
     unnamed_columns = [col for col in df.columns if col == ""]
     if unnamed_columns:
         df = df.drop(unnamed_columns)
-        
+
     return df
 
 def process_txt_files(file_paths, schema_overrides=None):
@@ -190,11 +183,15 @@ def process_txt_files(file_paths, schema_overrides=None):
         # Read and format the current file
         current_df = read_and_format(path_str, schema_overrides)
 
+        # Printing for debugging purposes
+        print(f"Processing file: {path_str},", "shape:", current_df.shape)
+
         if index == 0:
             # Initialize with the first file
             final_df = current_df
+
         else:
-            # Clean invalid values and align column schemas
+            # Clean invalid values and align column schemas for shared columns
             for col_name, col_type in final_df.schema.items():
                 if col_name in current_df.schema:
                     # Clean and align columns expected to be Int32
@@ -208,22 +205,29 @@ def process_txt_files(file_paths, schema_overrides=None):
                         )
                     # Cast the column to the expected type
                     current_df = current_df.with_columns(pl.col(col_name)
-                                                         .cast(col_type))
-            
-            # Concatenate the aligned DataFrame
-            final_df = pl.concat([final_df, current_df])
+                                                         .cast(col_type,
+                                                               strict=False))
 
-            # Align schemas
+            # Add missing columns to current_df (e.g. pre-24-4T quarters
+            # won't have the new columns; fill them with nulls)
             for col in final_df.columns:
                 if col not in current_df.columns:
-                    current_df = current_df.with_columns(pl.lit(None)
-                                                           .alias(col))
-            
+                    current_df = current_df.with_columns(
+                        pl.lit(None).cast(final_df[col].dtype).alias(col)
+                    )
+
+            # Add missing columns to final_df (e.g. when current_df is a
+            # newer quarter with new columns; backfill with nulls)
             for col in current_df.columns:
                 if col not in final_df.columns:
-                    current_df = current_df.drop(col)
+                    final_df = final_df.with_columns(
+                        pl.lit(None).cast(current_df[col].dtype).alias(col)
+                    )
 
-        print(f"Processing file: {path_str}")
+            # Reorder current_df columns to match final_df before concatenating
+            current_df = current_df.select(final_df.columns)
+
+            # Concatenate the aligned DataFrames
+            final_df = pl.concat([final_df, current_df])
 
     return final_df
-

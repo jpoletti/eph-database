@@ -2,7 +2,7 @@ import io
 import zipfile
 
 def create_key_list(last_quarter, start_quarter='16-2T'):
-    
+
     # Finding the year and quarter for the starting quarter
     year = int('20' + start_quarter[:2])
     quarter = int(start_quarter[-2])
@@ -20,13 +20,15 @@ def create_key_list(last_quarter, start_quarter='16-2T'):
             year += 1
     return key_list
 
+
 def create_url_list(key_list):
+
     # Generate URL list
     value_list = []
     for key in key_list:
         quarter = key[-2]
         year = '20' + key[:2]
-        
+
         # Dealing with URLs for 2016
         if year == '2016':
             if quarter == '2':
@@ -59,7 +61,7 @@ def save_dataframe_as_zip(df, zip_filepath, csv_filename):
     """
     Saves a Polars DataFrame as a CSV file compressed inside a ZIP archive
     directly to disk.
-
+ 
     Args:
         df (pl.DataFrame): The DataFrame to save.
         zip_filepath (str): The path for the ZIP file to save.
@@ -72,7 +74,7 @@ def save_dataframe_as_zip(df, zip_filepath, csv_filename):
     df.write_csv(csv_buffer)
 
     # Open the ZIP file and write the CSV content directly into it
-    with zipfile.ZipFile(zip_filepath, mode='w', 
+    with zipfile.ZipFile(zip_filepath, mode='w',
                          compression=zipfile.ZIP_DEFLATED) as zf:
         # Ensure the cursor is at the start of the buffer
         csv_buffer.seek(0)

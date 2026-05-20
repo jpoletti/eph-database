@@ -38,22 +38,61 @@ def test_urls(url_dict):
         try:
             response = requests.get(url, headers=headers, timeout=20,
                                     allow_redirects=True)
-            
-            # Check if redirected to the error page
-            if "Error-Default" in response.url:
-                continue  # Skip URLs that redirect to the placeholder page
-            
-            # Optionally inspect the content for error indicators
-            if "Error" in response.text or "404" in response.text:
-                continue  # Skip URLs with error messages in their content
-
-            # If no issues, consider the URL valid
-            valid_urls[key] = url
+            content_type = response.headers.get('Content-Type', '')
+            if 'zip' in content_type or 'octet-stream' in content_type:
+                valid_urls[key] = url
 
         except requests.exceptions.RequestException:
-            continue  # Handle connection errors gracefully
+            continue
 
     return valid_urls
+
+def download_release_zips(repo='jpoletti/eph-database'):
+    """
+    Downloads the hogar and individual ZIP files from the latest GitHub
+    Release into memory.
+ 
+    Args:
+        repo (str): The GitHub repository in 'owner/repo' format.
+ 
+    Returns:
+        tuple: A tuple of (hogar_zip, individual_zip) as BytesIO objects.
+    """
+    base_url = f'https://github.com/{repo}/releases/latest/download'
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+
+    for filename in ('hogar_data.zip', 'individual_data.zip'):
+        response = requests.get(f'{base_url}/{filename}', headers=headers)
+        if response.status_code != 200:
+            raise RuntimeError(
+                f'Failed to download {filename} from release: '
+                f'HTTP {response.status_code}'
+            )
+        if filename == 'hogar_data.zip':
+            hogar_zip = BytesIO(response.content)
+        else:
+            individual_zip = BytesIO(response.content)
+
+    return hogar_zip, individual_zip
+
+def extract_release_zip_to_memory(release_zips):
+    """
+    Extracts the CSV from a ZIP BytesIO object into a new BytesIO object.
+ 
+    Args:
+        release_zips (tuple): A tuple of ZIP files in memory containing single
+                              CSVs.
+ 
+    Returns:
+        BytesIO: The extracted CSV as a BytesIO object.
+    """
+    release_csv_list = []
+    for zip in release_zips:
+        with zipfile.ZipFile(zip) as z:
+            release_csv = BytesIO(z.read(z.namelist()[0]))
+            release_csv_list.append(release_csv)
+
+    return release_csv_list
 
 def download_new_zips_to_memory(valid_urls):
     new_zip_files = []
@@ -87,23 +126,6 @@ def extract_new_zips_to_memory(new_zip_files):
                     ind_txt_files.append(ind_txt)
 
     return hogar_txt_files, ind_txt_files
-
-def extract_old_zips_to_memory(dataset):
-
-    if dataset == 'hogar':
-        path = 'data/hogar_data.zip'
-        with zipfile.ZipFile(path) as z:
-            old_csv = BytesIO(z.read(z.namelist()[0]))
-
-    elif dataset == 'ind':
-        path = 'data/individual_data.zip'
-        with zipfile.ZipFile(path) as z:
-            old_csv = BytesIO(z.read(z.namelist()[0]))
-
-    else:
-        raise ValueError('dataset should be either "hogar" or "ind"')
-    
-    return old_csv
 
 def read_text_and_merge(old_csv, new_txt):
 
